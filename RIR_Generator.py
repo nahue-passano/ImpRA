@@ -9,7 +9,7 @@ import numpy as np
 from scipy.signal import chirp
 # import matplotlib.pyplot as plt
 
-def RIR_Generator(f_min, f_max, T):
+def RIR_Generator(f_min, f_max, T, path):
     """
     Parameters
     ----------
@@ -23,7 +23,7 @@ def RIR_Generator(f_min, f_max, T):
         Respuesta al impulso
 
     """
-    sine_sweep, fs = sf.read('sine_sweep.wav')                              # Importa sine-sweep grabado
+    sine_sweep, fs = sf.read(path)                                          # Importa sine-sweep grabado
     d = len(sine_sweep)/fs                                                  # Duración de la grabación
     
     t = np.arange(0, T, 1/fs)                                               # Vector de tiempos
@@ -42,6 +42,5 @@ def RIR_Generator(f_min, f_max, T):
     RI = RI[np.amax(abs(RI)):(3*fs)]                                        # Se recorta el audio desde el máximo hasta 3 s
     return RI
 
-# RI = RIR_Generator(100, 1000, 10)
-
-  
+if __name__ == '__main__': # hace que lo siguiente solo se ejecute al estar con ESTE script abierto, y NO llamando desde otro script
+  RI = RIR_Generator(100, 1000, 10)
