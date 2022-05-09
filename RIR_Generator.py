@@ -43,4 +43,8 @@ def RIR_Generator(f_min, f_max, T, path):
     return RI
 
 if __name__ == '__main__': # hace que lo siguiente solo se ejecute al estar con ESTE script abierto, y NO llamando desde otro script
-  RI = RIR_Generator(100, 1000, 10)
+  f_min = 10
+  f_max = 1000
+  T = 10
+  path = ''
+  RI = RIR_Generator(f_min, f_max, T, path)
