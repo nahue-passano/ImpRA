@@ -39,12 +39,12 @@ def RIR_Generator(f_min, f_max, T, path):
     RI_fft = sine_sweep_fft * inv_filt_fft
     RI = np.fft.ifft(RI_fft)                                                # Repuesta al impulso
     RI = RI/np.amax(abs(RI))
-    RI = RI[np.amax(abs(RI)):(3*fs)]                                        # Se recorta el audio desde el máximo hasta 3 s
+    RI = RI[int(np.amax(abs(RI))):(3*fs)]                                        # Se recorta el audio desde el máximo hasta 3 s
     return RI
 
 if __name__ == '__main__': # hace que lo siguiente solo se ejecute al estar con ESTE script abierto, y NO llamando desde otro script
-  f_min = 10
-  f_max = 1000
-  T = 10
-  path = ''
+  f_min = 125
+  f_max = 16_000
+  T = 3
+  path = 'audio_tests/sweep_1.wav'
   RI = RIR_Generator(f_min, f_max, T, path)
