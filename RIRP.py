@@ -90,6 +90,13 @@ class RIRP:
         
         return filtered_ir, center_freqs
 
+    def get_chu_compensation(signal, percentage = 10):
+        signal_len = len(signal)
+        noise_start = int(np.round((1 - percentage / 100) * signal_len))
+        signal_trimmed = signal[noise_start:]  # Trims the signal keeping only the last x% of itself as specified.
+        noise_rms = np.mean(signal_trimmed)  # Calculates the mean squared value
+        return noise_rms
+
 if __name__ == '__main__':
     RIRP_instance = RIRP('audio_tests/sweep_1.wav')
     
