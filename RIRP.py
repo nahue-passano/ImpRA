@@ -1,7 +1,8 @@
 import numpy as np
 from scipy import signal
 import soundfile as sf
-from scipy.signal import chirp
+from scipy.signal import chirp, butter, sosfiltfilt
+from scipy.ndimage import median_filter
 from matplotlib import pyplot as plt
 
 class RIRP:
@@ -42,7 +43,10 @@ class RIRP:
         # self.ir = IR[np.amax(abs(IR)):(3*fs)]                                        # Se recorta el audio desde el máximo hasta 3 s
         # return self.ir
     
-    def get_IR_filtered(self, bands_per_oct, bw_ir = None):
+    def get_reversed_ir(self):
+        self.ir = np.flip(self.ir)
+    
+    def get_ir_filtered(self, bands_per_oct, bw_ir = None):
         """Filters the impulse response in octave or third octave bands with 
         6th order (in the case of the octave band) and 8th order (in the case
         of the third octave band) butterworth bandpass filters according to
@@ -80,13 +84,13 @@ class RIRP:
         
         # Generation of the bandpass filters and filtering of the IR
         for lower, upper in zip(lower_boundary_freqs, upper_boundary_freqs):  
-            butterworth_filters = signal.butter(N = filter_order, Wn = np.array([lower, upper]), 
+            butterworth_filters = butter(N = filter_order, Wn = np.array([lower, upper]), 
                                 btype='bandpass', analog=False , 
                                 output='sos', fs = self.fs)                  # Generates the bandpass
 
             index = np.where(lower_boundary_freqs == lower)[0] 
 
-            filtered_ir[index, :] = signal.sosfiltfilt(butterworth_filters, self.ir) # Filters the IR
+            filtered_ir[index, :] = sosfiltfilt(butterworth_filters, self.ir) # Filters the IR
         
         return filtered_ir, center_freqs
 
@@ -96,6 +100,13 @@ class RIRP:
         signal_trimmed = signal[noise_start:]  # Trims the signal keeping only the last x% of itself as specified.
         noise_rms = np.mean(signal_trimmed)  # Calculates the mean squared value
         return noise_rms
+
+    def smooth_by_median_filter(signal, len_window):
+        smoothed_signal = np.zeros(len(signal))
+        for i in range(len(smoothed_signal)):
+            smoothed_signal[i] = median_filter(signal[i],len_window)
+        
+        return smoothed_signal
 
 if __name__ == '__main__':
     RIRP_instance = RIRP('audio_tests/sweep_1.wav')
