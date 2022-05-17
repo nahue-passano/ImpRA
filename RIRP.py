@@ -6,10 +6,11 @@ from scipy.ndimage import median_filter
 from matplotlib import pyplot as plt
 
 class RIRP:
-    def __init__(self,ir_path):
-        self.ir, self.fs = sf.read(ir_path)
+    def load_signal(signal_path):
+        signal, fs = sf.read(signal_path)
+        return signal, fs
     
-    def get_ir_from_sinesweep(self, f_min, f_max, T):
+    def get_ir_from_sinesweep(sine_sweep, fs, f_min, f_max, T):
         """
         Parameters
         ----------
@@ -23,8 +24,6 @@ class RIRP:
             Respuesta al impulso
 
         """
-        # sine_sweep, fs = sf.read(path)                                          # Importa sine-sweep grabado
-        sine_sweep, fs = self.ir , self.fs
         d = len(sine_sweep)/fs                                                  # Duración de la grabación
         
         t = np.arange(0, T, 1/fs)                                               # Vector de tiempos
@@ -37,16 +36,18 @@ class RIRP:
         
         sine_sweep_fft = np.fft.rfft(sine_sweep)
         inv_filt_fft = np.fft.rfft(inv_filt)
-        IR_fft = sine_sweep_fft * inv_filt_fft
-        IR = np.fft.ifft(IR_fft)                                                # Repuesta al impulso
-        self.ir = IR/np.amax(np.abs(IR))
-        # self.ir = IR[np.amax(abs(IR)):(3*fs)]                                        # Se recorta el audio desde el máximo hasta 3 s
-        # return self.ir
+        ir_fft = sine_sweep_fft * inv_filt_fft
+        ir = np.fft.ifft(ir_fft)                                                # Repuesta al impulso
+        ir = ir/np.amax(np.abs(ir))
+
+        return ir
+
+    def get_reversed_ir(ir):
+        reversed_ir = np.flip(ir)
+
+        return reversed_ir
     
-    def get_reversed_ir(self):
-        self.ir = np.flip(self.ir)
-    
-    def get_ir_filtered(self, bands_per_oct, bw_ir = None):
+    def get_ir_filtered(ir, fs, bands_per_oct, bw_ir = None):
         """Filters the impulse response in octave or third octave bands with 
         6th order (in the case of the octave band) and 8th order (in the case
         of the third octave band) butterworth bandpass filters according to
@@ -80,17 +81,17 @@ class RIRP:
         jump_freq = np.power(2, 1 / (2 * bands_per_oct))
         lower_boundary_freqs = center_freqs / jump_freq
         upper_boundary_freqs = center_freqs * jump_freq
-        filtered_ir = np.zeros((len(center_freqs), len(self.ir)))
+        filtered_ir = np.zeros((len(center_freqs), len(ir)))
         
         # Generation of the bandpass filters and filtering of the IR
         for lower, upper in zip(lower_boundary_freqs, upper_boundary_freqs):  
             butterworth_filters = butter(N = filter_order, Wn = np.array([lower, upper]), 
                                 btype='bandpass', analog=False , 
-                                output='sos', fs = self.fs)                  # Generates the bandpass
+                                output='sos', fs = fs)                  # Generates the bandpass
 
             index = np.where(lower_boundary_freqs == lower)[0] 
 
-            filtered_ir[index, :] = sosfiltfilt(butterworth_filters, self.ir) # Filters the IR
+            filtered_ir[index, :] = sosfiltfilt(butterworth_filters, ir) # Filters the IR
         
         return filtered_ir, center_freqs
 
@@ -99,14 +100,16 @@ class RIRP:
         noise_start = int(np.round((1 - percentage / 100) * signal_len))
         signal_trimmed = signal[noise_start:]  # Trims the signal keeping only the last x% of itself as specified.
         noise_rms = np.mean(signal_trimmed)  # Calculates the mean squared value
+        
         return noise_rms
 
-    def smooth_by_median_filter(signal, len_window):
+    def get_smooth_by_median_filter(signal, len_window):
         smoothed_signal = np.zeros(len(signal))
         for i in range(len(smoothed_signal)):
             smoothed_signal[i] = median_filter(signal[i],len_window)
         
         return smoothed_signal
+
 
 if __name__ == '__main__':
     RIRP_instance = RIRP('audio_tests/sweep_1.wav')
