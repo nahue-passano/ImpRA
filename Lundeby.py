@@ -33,14 +33,15 @@ t = int(len(IR)/w)                                          # Steps
 RMS = lambda signal: np.sqrt(np.mean(signal**2))
 dB = lambda signal: 10 * np.log10(abs(signal/max(IR)))
 
-# CON MEDIA ARITMÉTICA
-IR_prom = np.zeros(int(len(IR)/w))
+def arithmetic_mean(w, signal):
+    IR_prom = np.zeros(int(len(signal)/w))
+    for i in range(int(len(signal)/w)):
+        IR_prom[i] = np.mean(signal[i*w:(i+1)*w]) 
 
-eje_tiempo =np.zeros(t)
-for i in range(int(len(IR)/w)):
-    IR_prom[i] = np.mean(IR[i*w:(i+1)*w])
-    eje_tiempo[i] = math.ceil(w / 2) + (i * w)    
-IR_RMS_dB = dB(IR_prom)
+    return dB(IR_prom)
+
+# CON MEDIA ARITMÉTICA
+IR_prom_dB = arithmetic_mean(w, IR)
 
 # CON MEDIA CUADRÁTICA
 # IR_RMS = np.zeros(t)
@@ -59,19 +60,15 @@ noise_RMS = np.mean(noise)    # CON MEDIA ARITMÉTICA
 noise_dB = dB(noise_RMS)
 
 # 3. ESTIMATE SLOPE OF DECAY FROM 0 dB TO NOISE LEVEL + 10 dB
-not_noise_index = int(max(np.argwhere(IR_RMS_dB > noise_dB + 10)))
+not_noise_index = int(max(np.argwhere(IR_prom_dB > noise_dB + 10)))
 x = np.arange(0, len(IR))
-m, b = np.polyfit(x[0:not_noise_index], IR_RMS_dB[0:not_noise_index],1)            # Linear regression    
+m, b = np.polyfit(x[0:not_noise_index], IR_prom_dB[0:not_noise_index],1)            # Linear regression    
 
 linear_fit = lambda x: (m * x) + b
 
 # 4. FIND PRELIMINARY CROSSPOINT (where the lineal regression meets the estimated noise)
 crosspoint = (noise_dB - b)/m         
  
-# plt.plot(eje_tiempo, IR_RMS_dB)
-# plt.plot(eje_tiempo, linear_fit(eje_tiempo))
-# plt.grid()
-# plt.show()                     # ESTOS GRÁFICOS NO ESTAN BIEN, PERO NO SE POR QUÉ, ANTES ESTABAN BIEN
 
 error = 1
 max_tries = 2                    # According to Lundeby, 5 iterations is enough in all cases
@@ -88,20 +85,17 @@ while tries <= max_tries:        # ME EXPLOTA TODO CUANDO PONGO LA CONDICIÓN er
         t = int(len(IR) / w)
     else:
         t = int(len(IR[0:int(crosspoint - delta)]) / w)
-    if t < 2:
-        t = 2
         
     # 6. AVERAGE SQUARED IMPULSE RESPONSE IN NEW LOCAL TIME INTERVALS
-    IR_RMS_w = np.zeros(t)
-    eje_tiempo_w = np.zeros(t)
-    for i in range(0, t):
-        # IR_RMS_w[i] = RMS(IR[i*w:(i+1)*w])                # CON MEDIA CUADRÁTICA
-        IR_RMS_w[i] = np.mean(IR[i*w:(i+1)*w])          # CON MEDIA ARITMÉTICA
-        eje_tiempo_w[i] = math.ceil(w / 2) + (i * w)
-    IR_RMS_dB_w = dB(IR_RMS_w)
-
-    # SEGÚN INTERPRETÉ DEL PAPER, LOS PUNTOS 5. Y 6. NO DEBERÍAN ESTAR DENTRO DEL LOOP, LA ITERACIÓN ES SOLO DE 7., 8. Y 9.
-    # PERO MAITE Y MARINO LO METIERON ADENTRO. AL FINAL COMO NO ME SALÍAN LAS COSAS ME RENDÍ Y TRATÉ DE HACERLO COMO ELLOS (TAMPOCO FUNCIONÓ JE)
+    IR_prom_dB = arithmetic_mean(w, IR_prom_dB)
+    
+    # IR_RMS_w = np.zeros(t)
+    # eje_tiempo_w = np.zeros(t)
+    # for i in range(0, t):
+    #     # IR_RMS_w[i] = RMS(IR[i*w:(i+1)*w])                # CON MEDIA CUADRÁTICA
+    #     IR_RMS_w[i] = np.mean(IR[i*w:(i+1)*w])          # CON MEDIA ARITMÉTICA
+    #     eje_tiempo_w[i] = np.ceil(w / 2) + (i * w)
+    # IR_RMS_dB_w = dB(IR_RMS_w)
 
     # 7. ESTIMATE BACKGROUND NOISE LEVEL 
     noise = IR[int(crosspoint + delta): len(IR):]
