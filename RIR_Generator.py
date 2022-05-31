@@ -19,7 +19,7 @@ def RIR_Generator(f_min, f_max, T, path):
 
     Returns
     -------
-    RI : ndarray
+    RIR : ndarray
         Respuesta al impulso
 
     """
@@ -36,11 +36,20 @@ def RIR_Generator(f_min, f_max, T, path):
     
     sine_sweep_fft = np.fft.rfft(sine_sweep)
     inv_filt_fft = np.fft.rfft(inv_filt)
+<<<<<<< HEAD
+    RIR_fft = sine_sweep_fft * inv_filt_fft
+    RIR = np.fft.ifft(RIR_fft)                                                # Repuesta al impulso
+    RIR = RIR/np.max(abs(RI))
+    # RI = RI[np.max(abs(RI)):(3*fs)]                                        # Se recorta el audio desde el máximo hasta 3 s
+    RIR = RIR[np.where(abs(RIR) == np.max(abs(RIR))):(3*fs)]
+    return RIR
+=======
     RI_fft = sine_sweep_fft * inv_filt_fft
     RI = np.fft.ifft(RI_fft)                                                # Repuesta al impulso
     RI = RI/np.amax(abs(RI))
     RI = RI[int(np.amax(abs(RI))):(3*fs)]                                        # Se recorta el audio desde el máximo hasta 3 s
     return RI
+>>>>>>> e7d3ecad520496913e71ff39590846358ce6e96d
 
 if __name__ == '__main__': # hace que lo siguiente solo se ejecute al estar con ESTE script abierto, y NO llamando desde otro script
   f_min = 125
