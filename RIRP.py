@@ -103,16 +103,103 @@ class RIRP:
         
         return filtered_ir, center_freqs
 
-    def get_chu_compensation(self, signal, percentage = 10):
-        signal_len = len(signal)
-        noise_start = int(np.round((1 - percentage / 100) * signal_len))
-        signal_trimmed = signal[noise_start:]  # Trims the signal keeping only the last x% of itself as specified.
-        noise_rms = np.mean(signal_trimmed)  # Calculates the mean squared value
+    # def get_chu_compensation(self, signal, percentage = 10):
+    #     signal_len = len(signal)
+    #     noise_start = int(np.round((1 - percentage / 100) * signal_len))
+    #     signal_trimmed = signal[noise_start:]  # Trims the signal keeping only the last x% of itself as specified.
+    #     noise_rms = np.mean(signal_trimmed)  # Calculates the mean squared value
         
-        return noise_rms
+    #     return noise_rms
+    
+    def get_lundeby_limit(self, ir, fs):
+        w = int(0.01 * fs)                                                             # 10 ms window
+        t = int(len(ir)/w)                                                             # Steps
+        
+        RMS = lambda Signal: np.sqrt(np.mean(Signal**2))
+        dB = lambda Signal: 10 * np.log10(abs(Signal/max(ir)))
+        
+        def root_mean_square(w, Signal, t):
+            IR_RMS = np.zeros(t)
+            for i in range(0, t):
+                IR_RMS[i] = RMS(Signal[i*w:(i+1)*w])
+            return dB(IR_RMS)
+                
+        IR_RMS_dB = root_mean_square(w, ir, t)
+        
+        # 2. ESTIMATE BACKGROUND NOISE USING THE TAIL (square average of the last 10 %)
+        noise = ir[int(0.9*len(ir)):len(ir)]
+        noise_RMS = RMS(noise)                                                         
+        noise_dB = dB(noise_RMS)
+        
+        # 3. ESTIMATE SLOPE OF DECAY FROM 0 dB TO NOISE LEVEL + 10 dB
+        fit_end = int(max(np.argwhere(IR_RMS_dB > noise_dB + 10)))
+        
+        x_axis = np.arange(0, (len(ir)/w))
+        for i in range(0, t):
+            x_axis[i] = int((w/2) + (i*w))
+        
+        m, b = np.polyfit(x_axis[0:fit_end], IR_RMS_dB[0:fit_end],1)                  # Linear regression
+        
+        # linear_fit = lambda x: (m * x) + b
+        
+        
+        # 4. FIND PRELIMINARY CROSSPOINT (where the lineal regression meets the estimated noise)
+        crosspoint = round((noise_dB - b)/m)         
 
-    def get_smooth_by_schroeder(self):
-        pass
+        error = 1
+        max_tries = 5                                                                 # According to Lundeby, 5 iterations is enough in all cases
+        tries = 0
+        
+        while tries <= max_tries and error > 0.001:
+        
+           # 5. FIND NEW LOCAL TIME INTERVAL LENGTH
+            delta = abs(10/m)                                                          # (X2 - X1) = (Y2 - Y1)/m  --> delta = Time interval required for a 10 dB drop
+            p = 10                                                                     # Number of steps every 10 dB (Lundeby recommends between 3 and 10)
+            w = int(delta / p)                                                         # Window: 10 steps (p) every 10 dB (delta)
+            
+            if (crosspoint - delta) > len(ir): 
+                t = int(len(ir) / w)
+            else:
+                t = int(len(ir[0:int(crosspoint - delta)]) / w)
+                
+            # 6. AVERAGE SQUARED IMPULSE RESPONSE IN NEW LOCAL TIME INTERVALS  
+            IR_RMS_dB = root_mean_square(w, ir, t)                                     
+        
+            # 7. ESTIMATE BACKGROUND NOISE LEVEL 
+            noise = ir[int(crosspoint + delta): len(ir):]                              # 10 dB safety margin from crosspoint
+            
+            if len(noise) < (0.1 * len(ir)):                                           # Lundeby indicates to use at least 10% of the signal to estimate background noise level
+                noise = ir[int(0.9 * len(ir)): len(ir):]
+            noise_RMS = RMS(noise)                                                     
+            noise_dB = dB(noise_RMS)
+                
+            # 8. ESTIMATE LATE DECAY SLOPE
+            x_axis = np.arange(0, t)
+            for i in range(0, t):
+                x_axis[i] = int((w/2) + (i*w))
+                
+            m, b = np.polyfit(x_axis, IR_RMS_dB, 1)
+            
+            error = abs(crosspoint - ((noise_dB - b)/m))/crosspoint
+            
+            # 9. FIND NEW CROSSPOINT
+            crosspoint = round((noise_dB - b)/m)
+            print(crosspoint)
+            
+            tries += 1
+        
+        return crosspoint
+
+    def get_smooth_by_schroeder(self, ir, crosspoint):
+        for i in range(len(ir)):
+            ir[i] = ir[i]**2
+        
+        schroeder = np.pad(np.flip(np.cumsum(np.flip(ir[0:crosspoint:]))), (0, (len(ir) - crosspoint)))
+        
+        with np.errstate(divide='ignore', invalid='ignore'):
+            schroeder_dB = 10 * np.log10(schroeder / max(schroeder))
+            
+        return schroeder_dB
 
     def get_smooth_by_median_filter(self, signal, len_window):
         smoothed_signal = np.zeros_like(signal)
@@ -120,7 +207,32 @@ class RIRP:
             smoothed_signal[freq,:] = median_filter(signal[freq,:],len_window)
             
         return smoothed_signal
+    
+    def get_acoustical_parameters(self, schroeder_dB, fs):
+        # EDT
+        x_min_EDT = np.max(np.argwhere(schroeder_dB > -1))
+        x_max_EDT = np.max(np.argwhere(schroeder_dB > -10))
+        EDT = (x_max_EDT - x_min_EDT) / fs
+        
+        # m_EDT, b_EDT = np.polyfit((x_min_EDT, x_max_EDT), (schroeder_dB[x_min_EDT], schroeder_dB[x_max_EDT]),1)
+        # EDT_linear_fit = lambda x: (m_EDT * x) + b_EDT
+        
+        # T20
+        x_min_TR = np.max(np.argwhere(schroeder_dB > -5))
+        x_max_T20 = np.max(np.argwhere(schroeder_dB > -25))
+        T20 = (x_max_T20 - x_min_TR) / fs
+        
+        # m_T20, b_T20 = np.polyfit((x_min_TR, x_max_T20), (schroeder_dB[x_min_TR], schroeder_dB[x_max_T20]),1)
+        # T20_linear_fit = lambda x: (m_T20 * x) + b_T20
 
+        # T30
+        x_max_T30 = np.max(np.argwhere(schroeder_dB > -35))
+        T30 = (x_max_T30 - x_min_TR) / fs
+        
+        # m_T30, b_T30 = np.polyfit((x_min_TR, x_max_T30), (schroeder_dB[x_min_TR], schroeder_dB[x_max_T30]),1)
+        # T30_linear_fit = lambda x: (m_T30 * x) + b_T30
+        
+        return EDT, T20, T30
 
 if __name__ == '__main__':
     RIRP_instance = RIRP()
