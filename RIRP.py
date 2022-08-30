@@ -103,13 +103,13 @@ class RIRP:
         
         return filtered_ir, center_freqs
 
-    # def get_chu_compensation(self, signal, percentage = 10):
-    #     signal_len = len(signal)
-    #     noise_start = int(np.round((1 - percentage / 100) * signal_len))
-    #     signal_trimmed = signal[noise_start:]  # Trims the signal keeping only the last x% of itself as specified.
-    #     noise_rms = np.mean(signal_trimmed)  # Calculates the mean squared value
+    def get_chu_compensation(self, ir, percentage = 10):
+        ir_len = len(ir)
+        noise_start = int(np.round((1 - percentage / 100) * ir_len))
+        ir_trimmed = ir[noise_start:]  # Trims the signal keeping only the last x% of itself as specified.
+        noise_rms = np.mean(ir_trimmed)  # Calculates the mean squared value
         
-    #     return noise_rms
+        return noise_rms
     
     def get_lundeby_limit(self, ir, fs):
         w = int(0.01 * fs)                                                             # 10 ms window
@@ -126,9 +126,12 @@ class RIRP:
                 
         IR_RMS_dB = root_mean_square(w, ir, t)
         
-        # 2. ESTIMATE BACKGROUND NOISE USING THE TAIL (square average of the last 10 %)
-        noise = ir[int(0.9*len(ir)):len(ir)]
-        noise_RMS = RMS(noise)                                                         
+        # # 2. ESTIMATE BACKGROUND NOISE USING THE TAIL (square average of the last 10 %)
+        # noise = ir[int(0.9*len(ir)):len(ir)]
+        # noise_RMS = RMS(noise)                                                         
+        # 
+        
+        noise_RMS = get_chu_compensation(ir)
         noise_dB = dB(noise_RMS)
         
         # 3. ESTIMATE SLOPE OF DECAY FROM 0 dB TO NOISE LEVEL + 10 dB

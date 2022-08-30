@@ -19,6 +19,14 @@ path = 'D:/Desktop/UNTREF/Instrumentos y Mediciónes Acústicas/TP 10 - RiRs/Có
 IR, fs = sf.read(path)                                                         # Import IR audio
 IR = IR[np.argmax(IR):len(IR)]
 
+def get_chu_compensation(ir, percentage = 10):
+    ir_len = len(ir)
+    noise_start = int(np.round((1 - percentage / 100) * ir_len))
+    ir_trimmed = ir[noise_start:]  # Trims the signal keeping only the last x% of itself as specified.
+    noise_rms = np.mean(ir_trimmed)  # Calculates the mean squared value
+    
+    return noise_rms
+    
 # 1. AVERAGE SQUARED IMPULSE RESPONSE IN LOCAL TIME INTERVALS (10 ms)
 
 w = int(0.01 * fs)                                                             # 10 ms window
@@ -52,9 +60,12 @@ noise = IR[int(0.9*len(IR)):len(IR)]
 # noise_mean = np.mean(noise)                                                    # CON MEDIA ARITMÉTICA
 # noise_dB = dB(noise_mean)
 
-noise_RMS = RMS(noise)                                                         # CON MEDIA CUADRÁTICA
-noise_dB = dB(noise_RMS)
+# noise_RMS = RMS(noise)                                                         # CON MEDIA CUADRÁTICA
+# noise_dB = dB(noise_RMS)
 
+noise_RMS = get_chu_compensation(IR)
+noise_dB = dB(noise_RMS)
+        
 
 # 3. ESTIMATE SLOPE OF DECAY FROM 0 dB TO NOISE LEVEL + 10 dB
 fit_end = int(max(np.argwhere(IR_RMS_dB > noise_dB + 10)))
