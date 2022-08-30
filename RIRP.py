@@ -131,7 +131,7 @@ class RIRP:
         # noise_RMS = RMS(noise)                                                         
         # 
         
-        noise_RMS = get_chu_compensation(ir)
+        noise_RMS = self.get_chu_compensation(ir)
         noise_dB = dB(noise_RMS)
         
         # 3. ESTIMATE SLOPE OF DECAY FROM 0 dB TO NOISE LEVEL + 10 dB
