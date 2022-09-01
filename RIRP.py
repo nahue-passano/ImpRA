@@ -1,5 +1,7 @@
 import numpy as np
+import os
 from scipy import signal
+import json
 import soundfile as sf
 from scipy.signal import chirp, butter, sosfiltfilt
 from scipy.ndimage import median_filter
@@ -72,10 +74,12 @@ class RIRP:
         """
 
         if bands_per_oct == 1:
+            filename = 'filters/octave_band_butterworths.json'
             filter_order = 6
             center_freqs = np.array([31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000])
             
         elif bands_per_oct == 3:
+            filename = 'filters/third_octave_band_butterworths.json'
             filter_order = 8
             center_freqs = np.array([31.5, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315,
                             400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150,
@@ -91,16 +95,32 @@ class RIRP:
         upper_boundary_freqs[np.where(upper_boundary_freqs > fs/2)] = fs/2 - 1
         filtered_ir = np.zeros((len(center_freqs), len(ir)))
         
+        # # Generation of the bandpass filters and filtering of the IR
+        # for lower, upper in zip(lower_boundary_freqs, upper_boundary_freqs):  
+        #     butterworth_filters = butter(N = filter_order, Wn = np.array([lower, upper]), 
+        #                         btype='bandpass', analog=False , 
+        #                         output='sos', fs = fs)                  # Generates the bandpass
+
+        #     index = np.where(lower_boundary_freqs == lower)[0] 
+
+        #     filtered_ir[index, :] = sosfiltfilt(butterworth_filters, ir) # Filters the IR
+
         # Generation of the bandpass filters and filtering of the IR
-        for lower, upper in zip(lower_boundary_freqs, upper_boundary_freqs):  
-            butterworth_filters = butter(N = filter_order, Wn = np.array([lower, upper]), 
-                                btype='bandpass', analog=False , 
-                                output='sos', fs = fs)                  # Generates the bandpass
+        if os.path.exists(filename):
+            with open(filename) as json_obj:
+                butterworth_filters = json.load(json_obj)
 
-            index = np.where(lower_boundary_freqs == lower)[0] 
-
-            filtered_ir[index, :] = sosfiltfilt(butterworth_filters, ir) # Filters the IR
-        
+        else:
+            butterworth_filters = {}
+            for lower, upper in zip(lower_boundary_freqs, upper_boundary_freqs):  
+                band_i = str(int(lower*jump_freq))
+                butterworth_filter_i = butter(N = filter_order, Wn = np.array([lower, upper]), 
+                                            btype='bandpass', analog=False , 
+                                            output='sos', fs = fs)                  # Generates the bandpass
+                butterworth_filters[band_i] = butterworth_filter_i.tolist()
+            with open(filename, 'w') as json_obj:
+                json.dump(butterworth_filters, json_obj, indent = 4)
+            
         return filtered_ir, center_freqs
 
     def get_chu_compensation(self, ir, percentage = 10):
@@ -194,8 +214,10 @@ class RIRP:
         return crosspoint
 
     def get_smooth_by_schroeder(self, ir, crosspoint):
-        for i in range(len(ir)):
-            ir[i] = ir[i]**2
+        
+        ## Elevar al cuadrado ir_matix
+
+        ## Iterar schroeder en cada fila de la matriz
         
         schroeder = np.pad(np.flip(np.cumsum(np.flip(ir[0:crosspoint:]))), (0, (len(ir) - crosspoint)))
         
@@ -204,10 +226,12 @@ class RIRP:
             
         return schroeder_dB
 
-    def get_smooth_by_median_filter(self, signal, len_window):
-        smoothed_signal = np.zeros_like(signal)
-        for freq in range(np.shape(signal)[0]):
-            smoothed_signal[freq,:] = median_filter(signal[freq,:],len_window)
+    def get_smooth_by_median_filter(self, ir_matrix, len_window):
+
+        ## Elevar al cuadrado ir_matix
+        smoothed_signal = np.zeros_like(ir_matrix)
+        for freq in range(np.shape(ir_matrix)[0]):
+            smoothed_signal[freq,:] = median_filter(ir_matrix[freq,:],len_window)
             
         return smoothed_signal
     
@@ -239,15 +263,17 @@ class RIRP:
 
 if __name__ == '__main__':
     RIRP_instance = RIRP()
-    
+    signal_path = 'audio_tests/rirs/RI_1.wav'
     f_min = 125
     f_max = 16_000
     T = 3
-    sinesweep, fs = RIRP_instance.load_signal('audio_tests/sweep_1.wav')
-    ir = RIRP_instance.get_ir_from_sinesweep(sine_sweep = sinesweep, fs = fs ,f_min = f_min , f_max = f_max , T = T)
+    # sinesweep, fs = RIRP_instance.load_signal(signal_path)
+    # ir = RIRP_instance.get_ir_from_sinesweep(sine_sweep = sinesweep, fs = fs ,f_min = f_min , f_max = f_max , T = T)
+    ir, fs = RIRP_instance.load_signal(signal_path)
     ir_reversed = RIRP_instance.get_reversed_ir(ir)
     filtered_ir, center_freqs =  RIRP_instance.get_ir_filtered(ir = ir_reversed, fs = fs, bands_per_oct = 1)
     filtered_ir = RIRP_instance.get_reversed_ir(filtered_ir)**2
     smoothed_ir = RIRP_instance.get_smooth_by_median_filter(filtered_ir,1000)
+    crosspoint = RIRP_instance.get_lundeby_limit()
     print('hola')
     
