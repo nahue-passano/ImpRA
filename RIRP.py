@@ -6,6 +6,7 @@ import soundfile as sf
 from scipy.signal import chirp, butter, sosfiltfilt
 from scipy.ndimage import median_filter
 from matplotlib import pyplot as plt
+import time
 
 class RIRP:
     def load_signal(self, signal_path):
@@ -72,7 +73,6 @@ class RIRP:
             response filtered with the m-th bandpass filter
             center_freqs (numpy array): Array with the center frequencies of the filters
         """
-
         if bands_per_oct == 1:
             filename = 'filters/octave_band_butterworths.json'
             filter_order = 6
@@ -94,33 +94,34 @@ class RIRP:
         upper_boundary_freqs = center_freqs * jump_freq
         upper_boundary_freqs[np.where(upper_boundary_freqs > fs/2)] = fs/2 - 1
         filtered_ir = np.zeros((len(center_freqs), len(ir)))
-        
-        # # Generation of the bandpass filters and filtering of the IR
-        # for lower, upper in zip(lower_boundary_freqs, upper_boundary_freqs):  
-        #     butterworth_filters = butter(N = filter_order, Wn = np.array([lower, upper]), 
-        #                         btype='bandpass', analog=False , 
-        #                         output='sos', fs = fs)                  # Generates the bandpass
-
-        #     index = np.where(lower_boundary_freqs == lower)[0] 
-
-        #     filtered_ir[index, :] = sosfiltfilt(butterworth_filters, ir) # Filters the IR
 
         # Generation of the bandpass filters and filtering of the IR
         if os.path.exists(filename):
+            # Loading filters
+            print('Loading filters')
             with open(filename) as json_obj:
                 butterworth_filters = json.load(json_obj)
 
         else:
+            # Generating and saving filters
+            print('generating filters')
             butterworth_filters = {}
             for lower, upper in zip(lower_boundary_freqs, upper_boundary_freqs):  
                 band_i = str(int(lower*jump_freq))
                 butterworth_filter_i = butter(N = filter_order, Wn = np.array([lower, upper]), 
                                             btype='bandpass', analog=False , 
-                                            output='sos', fs = fs)                  # Generates the bandpass
+                                            output='sos', fs = fs)              # Generates the bandpass
                 butterworth_filters[band_i] = butterworth_filter_i.tolist()
             with open(filename, 'w') as json_obj:
                 json.dump(butterworth_filters, json_obj, indent = 4)
-            
+        
+        bands = list(butterworth_filters.keys())
+
+        for i in range(len(bands)):
+            band_i = bands[i]
+            filter_i = np.array(butterworth_filters[band_i])
+            filtered_ir[i, :] = sosfiltfilt(filter_i, ir)           # Filters the IR
+
         return filtered_ir, center_freqs
 
     def get_chu_compensation(self, ir, percentage = 10):
