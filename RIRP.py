@@ -14,22 +14,22 @@ class RIRP:
         self.fs = None
 
     def load_signal(self, signal_path):
+        """ Loads the signal (ir or sinesweep) to be procesed
+
+        Args:
+            signal_path (str): Path of the signal
+        """
         self.ir, self.fs = sf.read(signal_path)
     
     def get_ir_from_sinesweep(self, f_min, f_max, T):
-        """
-        Parameters
-        ----------
-        f_min : Frecuencia inicial del sine-sweep [Hz].
-        f_max : Frecuencia final de sine-sweep [Hz].
-        T : Duración del sine-sweep [s].
+        """ Generates the ir from a sinesweep measurement
 
-        Returns
-        -------
-        RI : ndarray
-            Respuesta al impulso
-
+        Args:
+            f_min (int): Initial frequency of the sweep [Hz]
+            f_max (int): Final frequency of the sweep [Hz]
+            T (int): Length of the sweep [s]
         """
+
         # Time lenght and array
         d = len(self.ir)/self.fs                                               
         t = np.arange(0, T, 1/self.fs)                                          
@@ -47,11 +47,16 @@ class RIRP:
         inv_filt_fft = np.fft.rfft(inv_filt)
         ir_fft = sine_sweep_fft * inv_filt_fft
         ir = np.fft.ifft(ir_fft)                                                
-        ir = ir/np.max(np.abs(ir))
-
-        return ir
+        self.ir = ir/np.max(np.abs(ir))
 
     def get_reversed_ir(self):
+        """ Temporarily flips the ir to avoid low-frequency overlap between
+        the filter's impulse responses and the ir
+
+        Returns:
+            reversed_ir (numpy.array): Temporarily fliped ir
+        """
+
         if np.ndim(self.ir) == 1:    # Case of single ir to be reversed
             reversed_ir = np.flip(self.ir)
         else:                   # Case of matrix of ir filtered to be reversed
@@ -129,6 +134,15 @@ class RIRP:
         return filtered_ir, center_freqs
 
     def get_chu_compensation(self, ir, percentage = 10):
+        """ Calculates the noise RMS value according to Chu's method
+
+        Args:
+            ir (numpy.array): Array of the ir
+            percentage (int, optional): Percentage of ir tail to be considered. Defaults to 10.
+
+        Returns:
+            noise_rms: Noise RMS value of ir tail
+        """
         ir_len = len(ir)
         noise_start = int(np.round((1 - percentage / 100) * ir_len))
         ir_trimmed = ir[noise_start:]  # Trims the signal keeping only the last x% of itself as specified.
