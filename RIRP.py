@@ -9,16 +9,17 @@ from matplotlib import pyplot as plt
 import time
 
 class RIRP:
+    def __init__(self):
+        self.ir = None
+        self.fs = None
+
     def load_signal(self, signal_path):
-        signal, fs = sf.read(signal_path)
-        return signal, fs
+        self.ir, self.fs = sf.read(signal_path)
     
-    def get_ir_from_sinesweep(self, sine_sweep, fs, f_min, f_max, T):
+    def get_ir_from_sinesweep(self, f_min, f_max, T):
         """
         Parameters
         ----------
-        sine_sweep : Signal of the sine sweep
-        fs : Sample rate
         f_min : Frecuencia inicial del sine-sweep [Hz].
         f_max : Frecuencia final de sine-sweep [Hz].
         T : Duración del sine-sweep [s].
@@ -29,33 +30,36 @@ class RIRP:
             Respuesta al impulso
 
         """
-        d = len(sine_sweep)/fs                                                  # Duración de la grabación
+        # Time lenght and array
+        d = len(self.ir)/self.fs                                               
+        t = np.arange(0, T, 1/self.fs)                                          
         
-        t = np.arange(0, T, 1/fs)                                               # Vector de tiempos
-        ss = chirp(t, f0=f_min, f1=f_max, t1=T, method='logarithmic')           # Genera sine-sweep para obtener filtro inverso (normalizado)
-        inv_ss = ss[::-1]   
-        m = 1/(2*np.pi*np.exp(t*np.log(f_max/f_min)/T))                         # Factor de modulación
-        inv_filt = m * inv_ss                                                   # Filtro inverso
-        inv_filt = inv_filt/np.amax(abs(inv_filt))                              # Normalizado
-        inv_filt = np.pad(inv_filt, (0, int((d-T)*fs)), constant_values=(0, 0)) # Agregando zero padding
+        # Generating chirp
+        ss = chirp(t, f0=f_min, f1=f_max, t1=T, method='logarithmic')           
+        inv_ss = ss[::-1]                                                               # Inverse chirp
+        m = 1/(2*np.pi*np.exp(t*np.log(f_max/f_min)/T))                                 # Modulation
+        inv_filt = m * inv_ss                                                           # Inverse filter
+        inv_filt = inv_filt/np.amax(abs(inv_filt))                              
+        inv_filt = np.pad(inv_filt, (0, int((d-T)*self.fs)), constant_values=(0, 0))    # Padding
         
-        sine_sweep_fft = np.fft.rfft(sine_sweep)
+        # Frequency operation to obtain ir
+        sine_sweep_fft = np.fft.rfft(self.ir)
         inv_filt_fft = np.fft.rfft(inv_filt)
         ir_fft = sine_sweep_fft * inv_filt_fft
-        ir = np.fft.ifft(ir_fft)                                                # Repuesta al impulso
-        ir = ir/np.amax(np.abs(ir))
+        ir = np.fft.ifft(ir_fft)                                                
+        ir = ir/np.max(np.abs(ir))
 
         return ir
 
-    def get_reversed_ir(self, ir):
-        if np.ndim(ir) == 1:    # Case of single ir to be reversed
-            reversed_ir = np.flip(ir)
+    def get_reversed_ir(self):
+        if np.ndim(self.ir) == 1:    # Case of single ir to be reversed
+            reversed_ir = np.flip(self.ir)
         else:                   # Case of matrix of ir filtered to be reversed
-            reversed_ir = np.flip(ir,axis = 1)
+            reversed_ir = np.flip(self.ir,axis = 1)
 
         return reversed_ir
     
-    def get_ir_filtered(self, ir, fs, bands_per_oct, bw_ir = None):
+    def get_ir_filtered(self, ir, bands_per_oct, bw_ir = None):
         """Filters the impulse response in octave or third octave bands with 
         6th order (in the case of the octave band) and 8th order (in the case
         of the third octave band) butterworth bandpass filters according to
@@ -63,7 +67,7 @@ class RIRP:
 
         Args:
             ir (numpy array): Array of the impulse response
-            fs (int): Sample rate
+            self.fs (int): Sample rate
             bands_per_oct (int): Bands per octave
             bw_ir (list) (optional): Bandwidth of the impulse response to be filtered. 
             bw_ir[0]: lower boundary, bw_ir[1]: upper boundary. Default to None. 
@@ -92,7 +96,7 @@ class RIRP:
         jump_freq = np.power(2, 1 / (2 * bands_per_oct))
         lower_boundary_freqs = center_freqs / jump_freq
         upper_boundary_freqs = center_freqs * jump_freq
-        upper_boundary_freqs[np.where(upper_boundary_freqs > fs/2)] = fs/2 - 1
+        upper_boundary_freqs[np.where(upper_boundary_freqs > self.fs/2)] = self.fs/2 - 1
         filtered_ir = np.zeros((len(center_freqs), len(ir)))
 
         # Generation of the bandpass filters and filtering of the IR
@@ -110,7 +114,7 @@ class RIRP:
                 band_i = str(int(lower*jump_freq))
                 butterworth_filter_i = butter(N = filter_order, Wn = np.array([lower, upper]), 
                                             btype='bandpass', analog=False , 
-                                            output='sos', fs = fs)              # Generates the bandpass
+                                            output='sos', fs = self.fs)              # Generates the bandpass
                 butterworth_filters[band_i] = butterworth_filter_i.tolist()
             with open(filename, 'w') as json_obj:
                 json.dump(butterworth_filters, json_obj, indent = 4)
@@ -132,8 +136,8 @@ class RIRP:
         
         return noise_rms
     
-    def get_lundeby_limit(self, ir, fs):
-        w = int(0.01 * fs)                                                             # 10 ms window
+    def get_lundeby_limit(self, ir):
+        w = int(0.01 * self.fs)                                                             # 10 ms window
         t = int(len(ir)/w)                                                             # Steps
         
         RMS = lambda Signal: np.sqrt(np.mean(Signal**2))
@@ -216,51 +220,65 @@ class RIRP:
 
     def get_smooth_by_schroeder(self, ir, crosspoint):
         
-        ## Elevar al cuadrado ir_matix
+        # Get ir energy
+        energy = ir**2
 
         ## Iterar schroeder en cada fila de la matriz
         
-        schroeder = np.pad(np.flip(np.cumsum(np.flip(ir[0:crosspoint:]))), (0, (len(ir) - crosspoint)))
+        schroeder = np.pad(np.flip(np.cumsum(np.flip(energy[0:crosspoint:]))), (0, (len(energy) - crosspoint)))
         
         with np.errstate(divide='ignore', invalid='ignore'):
-            schroeder_dB = 10 * np.log10(schroeder / max(schroeder))
+            smoothed_energy = 10 * np.log10(schroeder / max(schroeder))
             
-        return schroeder_dB
+        return smoothed_energy
 
     def get_smooth_by_median_filter(self, ir_matrix, len_window):
 
         ## Elevar al cuadrado ir_matix
-        smoothed_signal = np.zeros_like(ir_matrix)
+        smoothed_energy = np.zeros_like(ir_matrix)
         for freq in range(np.shape(ir_matrix)[0]):
-            smoothed_signal[freq,:] = median_filter(ir_matrix[freq,:],len_window)
+            smoothed_energy[freq,:] = median_filter(ir_matrix[freq,:],len_window)
             
-        return smoothed_signal
+        return smoothed_energy
     
-    def get_acoustical_parameters(self, schroeder_dB, fs):
-        # EDT
-        x_min_EDT = np.max(np.argwhere(schroeder_dB > -1))
-        x_max_EDT = np.max(np.argwhere(schroeder_dB > -10))
-        EDT = (x_max_EDT - x_min_EDT) / fs
+    def get_acoustical_parameters(self, smoothed_energy):      
+        EDT = self.get_EDT(smoothed_energy)
+
+        T20 = self.get_T20(smoothed_energy)
         
-        # m_EDT, b_EDT = np.polyfit((x_min_EDT, x_max_EDT), (schroeder_dB[x_min_EDT], schroeder_dB[x_max_EDT]),1)
+        T30 = self.get_T30(smoothed_energy)
+
+        return EDT, T20, T30
+
+    def get_EDT(self, smoothed_energy):
+        x_min_EDT = np.max(np.argwhere(smoothed_energy > -1))
+        x_max_EDT = np.max(np.argwhere(smoothed_energy > -10))
+        EDT = (x_max_EDT - x_min_EDT) / self.fs
+
+        # m_EDT, b_EDT = np.polyfit((x_min_EDT, x_max_EDT), (smoothed_energy[x_min_EDT], smoothed_energy[x_max_EDT]),1)
         # EDT_linear_fit = lambda x: (m_EDT * x) + b_EDT
-        
+        return EDT
+
+    def get_T20(self, smoothed_energy):
         # T20
-        x_min_TR = np.max(np.argwhere(schroeder_dB > -5))
-        x_max_T20 = np.max(np.argwhere(schroeder_dB > -25))
-        T20 = (x_max_T20 - x_min_TR) / fs
+        x_min_TR = np.max(np.argwhere(smoothed_energy > -5))
+        x_max_T20 = np.max(np.argwhere(smoothed_energy > -25))
+        T20 = (x_max_T20 - x_min_TR) / self.fs
         
-        # m_T20, b_T20 = np.polyfit((x_min_TR, x_max_T20), (schroeder_dB[x_min_TR], schroeder_dB[x_max_T20]),1)
+        # m_T20, b_T20 = np.polyfit((x_min_TR, x_max_T20), (smoothed_energy[x_min_TR], smoothed_energy[x_max_T20]),1)
         # T20_linear_fit = lambda x: (m_T20 * x) + b_T20
 
-        # T30
-        x_max_T30 = np.max(np.argwhere(schroeder_dB > -35))
-        T30 = (x_max_T30 - x_min_TR) / fs
+        return T20
+
+    def get_T30(self, smoothed_energy):
+        x_min_TR = np.max(np.argwhere(smoothed_energy > -5))
+        x_max_T30 = np.max(np.argwhere(smoothed_energy > -35))
+        T30 = (x_max_T30 - x_min_TR) / self.fs
         
-        # m_T30, b_T30 = np.polyfit((x_min_TR, x_max_T30), (schroeder_dB[x_min_TR], schroeder_dB[x_max_T30]),1)
+        # m_T30, b_T30 = np.polyfit((x_min_TR, x_max_T30), (smoothed_energy[x_min_TR], smoothed_energy[x_max_T30]),1)
         # T30_linear_fit = lambda x: (m_T30 * x) + b_T30
-        
-        return EDT, T20, T30
+        return T30
+
 
 if __name__ == '__main__':
     RIRP_instance = RIRP()
