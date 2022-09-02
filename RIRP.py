@@ -143,6 +143,7 @@ class RIRP:
         Returns:
             noise_rms: Noise RMS value of ir tail
         """
+
         ir_len = len(ir)
         noise_start = int(np.round((1 - percentage / 100) * ir_len))
         ir_trimmed = ir[noise_start:]  # Trims the signal keeping only the last x% of itself as specified.
@@ -232,10 +233,19 @@ class RIRP:
         
         return crosspoint
 
-    def get_smooth_by_schroeder(self, ir, crosspoint):
+    def get_smooth_by_schroeder(self, ir_matrix, crosspoint):
+        """ Smooths the ir's energy with Schroeder's method.
+
+        Args:
+            ir_matrix (numpy.array): Array of the ir
+            crosspoint (float): Time crosspoint to end Schroeder's integral
+
+        Returns:
+            smoothed_energy (numpy.array): Array of the smoothed energy
+        """
         
         # Get ir energy
-        energy = ir**2
+        energy = ir_matrix**2
 
         ## Iterar schroeder en cada fila de la matriz
         
@@ -247,7 +257,15 @@ class RIRP:
         return smoothed_energy
 
     def get_smooth_by_median_filter(self, ir_matrix, len_window):
+        """ Smooths the ir's energy with Median Filter
 
+        Args:
+            ir_matrix (numpy.array): Array of the ir
+            len_window (int): Length of the window in samples
+
+        Returns:
+            smoothed_energy (numpy.array): Array of the smoothed energy 
+        """
         ## Elevar al cuadrado ir_matix
         smoothed_energy = np.zeros_like(ir_matrix)
         for freq in range(np.shape(ir_matrix)[0]):
@@ -255,7 +273,19 @@ class RIRP:
             
         return smoothed_energy
     
-    def get_acoustical_parameters(self, smoothed_energy):      
+    def get_acoustical_parameters(self, smoothed_energy):   
+        """ Calculates all acoustical parameters available:
+        > EDT
+        > T20
+        > T30
+
+        Args:
+            smoothed_energy (numpy.array): Smoothed energy of the ir
+
+        Returns:
+            EDT: _description_ ... TO BE DONE
+        """
+
         EDT = self.get_EDT(smoothed_energy)
 
         T20 = self.get_T20(smoothed_energy)
@@ -265,6 +295,14 @@ class RIRP:
         return EDT, T20, T30
 
     def get_EDT(self, smoothed_energy):
+        """ Calculates the Energy Decay Time (EDT) of the ir
+
+        Args:
+            smoothed_energy (numpy.array): Smoothed energy of the ir
+
+        Returns:
+            EDT (float): Energy Decay Time in seconds
+        """
         x_min_EDT = np.max(np.argwhere(smoothed_energy > -1))
         x_max_EDT = np.max(np.argwhere(smoothed_energy > -10))
         EDT = (x_max_EDT - x_min_EDT) / self.fs
@@ -274,6 +312,15 @@ class RIRP:
         return EDT
 
     def get_T20(self, smoothed_energy):
+        """ Estimates the Reverberation Time (RT) using the -5 to -25 dB 
+        range of the smoothed energy
+
+        Args:
+            smoothed_energy (numpy.array): Smoothed energy of the ir
+
+        Returns:
+            T20 (float): T20 in seconds
+        """
         # T20
         x_min_TR = np.max(np.argwhere(smoothed_energy > -5))
         x_max_T20 = np.max(np.argwhere(smoothed_energy > -25))
@@ -285,6 +332,15 @@ class RIRP:
         return T20
 
     def get_T30(self, smoothed_energy):
+        """ Estimates the Reverberation Time (RT) using the -5 to -35 dB 
+        range of the smoothed energy
+
+        Args:
+            smoothed_energy (numpy.array): Smoothed energy of the ir
+
+        Returns:
+            T30 (float): T30 in seconds
+        """
         x_min_TR = np.max(np.argwhere(smoothed_energy > -5))
         x_max_T30 = np.max(np.argwhere(smoothed_energy > -35))
         T30 = (x_max_T30 - x_min_TR) / self.fs
