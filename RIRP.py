@@ -6,7 +6,6 @@ import soundfile as sf
 from scipy.signal import chirp, butter, sosfiltfilt
 from scipy.ndimage import median_filter
 from matplotlib import pyplot as plt
-import time
 
 class RIRP:
     def __init__(self):
@@ -20,6 +19,8 @@ class RIRP:
             signal_path (str): Path of the signal
         """
         self.IR, self.fs = sf.read(signal_path)
+        
+        return self.IR, self.fs
     
     def get_ir_from_sinesweep(self, f_min, f_max, T):
         """ Generates the ir from a sinesweep measurement
@@ -48,8 +49,10 @@ class RIRP:
         IR_fft = sine_sweep_fft * inv_filt_fft
         IR = np.fft.ifft(IR_fft)                                                
         self.IR = IR/np.max(np.abs(IR))
+        
+        return self.IR, self.fs
 
-    def get_reversed_IR(self):
+    def get_reversed_IR(self, IR):
         """ Temporarily flips the ir to avoid low-frequency overlap between
         the filter's impulse responses and the ir
 
@@ -57,10 +60,10 @@ class RIRP:
             reversed_IR (numpy.array): Temporarily fliped IR
         """
 
-        if np.ndim(self.IR) == 1:    # Case of single ir to be reversed
-            reversed_IR = np.flip(self.IR)
+        if np.ndim(IR) == 1:    # Case of single ir to be reversed
+            reversed_IR = np.flip(IR)
         else:                   # Case of matrix of ir filtered to be reversed
-            reversed_IR = np.flip(self.IR,axis = 1)
+            reversed_IR = np.flip(IR,axis = 1)
 
         return reversed_IR
     
