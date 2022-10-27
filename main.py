@@ -9,6 +9,8 @@
 
 
 import numpy as np
+import os
+import shutil
 from PyQt5 import QtCore, QtGui, QtWidgets
 from RIRP import RIRP
 
@@ -196,9 +198,26 @@ class Ui_MainWindow(object):
 
         # Connections
         self.backend = RIRP()
+        self.pb_load_signal.clicked.connect(self.load_signal_dialog)
         self.rb_third_octave_bands.toggled.connect(self.refresh_frequencies)
         self.pb_calculate_parameters.clicked.connect(self.calculate_parameters)
 
+    ### Methods
+    
+    def load_signal_dialog(self):
+        dialog_response = QtWidgets.QFileDialog.getOpenFileName(
+            caption = 'Select a signal to process',
+            directory = os.getcwd()
+        )
+        signal_path = dialog_response[0]
+        file_name = signal_path.split('/')[-1]
+        audio_test_path = os.path.join(os.getcwd(),'audio_tests')
+        new_signal_path = os.path.join(audio_test_path,file_name)
+        shutil.copyfile(signal_path, new_signal_path)
+        
+        self.signal_path = new_signal_path
+        
+    
     def refresh_frequencies(self):
         self.comboBox.clear()
         self.comboBox_2.clear()
