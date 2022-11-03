@@ -116,7 +116,7 @@ class RIRP:
 
         else:
             # Generating and saving filters
-            print('generating filters')
+            print('Generating filters')
             butterworth_filters = {}
             for lower, upper in zip(lower_boundary_freqs, upper_boundary_freqs):  
                 band_i = str(int(lower*jump_freq))
@@ -163,83 +163,142 @@ class RIRP:
         Returns:
             crosspoint: Index from which the energy of the signal corresponds to background noise.
         """
-        w = int(0.01 * self.fs)                                                        # 10 ms window
-        t = int(len(IR)/w)                                                             # Steps
-        
-        RMS = lambda Signal: np.sqrt(np.mean(Signal**2))
-        dB = lambda Signal: 10 * np.log10(abs(Signal/max(IR)))
-        
-        def root_mean_square(w, Signal, t):
-            IR_RMS = np.zeros(t)
-            for i in range(0, t):
-                IR_RMS[i] = RMS(Signal[i*w:(i+1)*w])
-            return dB(IR_RMS)
-                
-        IR_RMS_dB = root_mean_square(w, IR, t)
-        
-        # 2. ESTIMATE BACKGROUND NOISE USING THE TAIL (square average of the last 10 %)
-        noise_RMS = self.get_chu_compensation(IR)
-        noise_dB = dB(noise_RMS)
-        
-        # 3. ESTIMATE SLOPE OF DECAY FROM 0 dB TO NOISE LEVEL + 10 dB
-        fit_end = int(max(np.argwhere(IR_RMS_dB > noise_dB + 10)))
-        
-        x_axis = np.arange(0, (len(IR)/w))
-        for i in range(0, t):
-            x_axis[i] = int((w/2) + (i*w))
-        
-        m, b = np.polyfit(x_axis[0:fit_end], IR_RMS_dB[0:fit_end],1)                  # Linear regression
-        
-        # linear_fit = lambda x: (m * x) + b
-        
-        
-        # 4. FIND PRELIMINARY CROSSPOINT (where the lineal regression meets the estimated noise)
-        crosspoint = round((noise_dB - b)/m)         
-        error = 1
-        max_tries = 5                                                                 # According to Lundeby, 5 iterations is enough in all cases
-        tries = 0
-        
-        while tries <= max_tries and error > 0.001:
-        
-           # 5. FIND NEW LOCAL TIME INTERVAL LENGTH
-            delta = abs(10/m)                                                          # (X2 - X1) = (Y2 - Y1)/m  --> delta = Time interval required for a 10 dB drop
-            p = 10                                                                     # Number of steps every 10 dB (Lundeby recommends between 3 and 10)
-            w = int(delta / p)                                                         # Window: 10 steps (p) every 10 dB (delta)
-            
-            if (crosspoint - delta) > len(IR): 
-                t = int(len(IR) / w)
-            else:
-                t = int(len(IR[0:int(crosspoint - delta)]) / w)
-                
-            # 6. AVERAGE SQUARED IMPULSE RESPONSE IN NEW LOCAL TIME INTERVALS  
-            IR_RMS_dB = root_mean_square(w, IR, t)                                     
-        
-            # 7. ESTIMATE BACKGROUND NOISE LEVEL 
-            noise = IR[int(crosspoint + delta): len(IR):]                              # 10 dB safety margin from crosspoint
-            
-            if len(noise) < (0.1 * len(IR)):                                           # Lundeby indicates to use at least 10% of the signal to estimate background noise level
-                noise = IR[int(0.9 * len(IR)): len(IR):]
-            noise_RMS = RMS(noise)                                                     
-            noise_dB = dB(noise_RMS)
-                
-            # 8. ESTIMATE LATE DECAY SLOPE
-            x_axis = np.arange(0, t)
-            for i in range(0, t):
-                x_axis[i] = int((w/2) + (i*w))
-                
-            m, b = np.polyfit(x_axis, IR_RMS_dB, 1)
-            
-            error = abs(crosspoint - ((noise_dB - b)/m))/crosspoint
-            
-            # 9. FIND NEW CROSSPOINT
-            crosspoint = round((noise_dB - b)/m)
-            print(crosspoint)
-            
-            tries += 1
-        
-        return crosspoint
+        N = len(IR)
+        energia = IR.copy()
+        media = np.zeros(int(N/(self.fs*0.01)))
+        eje_tiempo = np.zeros(int(N/(self.fs*0.01)))
 
-    def get_smooth_by_schroeder(self, IR_matrix, crosspoint):
+        # Divide in sections and calculate the mean
+
+        t = np.floor(N/(self.fs*0.01)).astype('int')
+        v = np.floor(N/t).astype('int')
+
+        RMS = lambda signal: np.sqrt(np.mean(signal**2))
+        dB = lambda signal: 10 * np.log10(abs(signal/max(energia)))
+
+        for i in range(0, t):
+            # media[i] = np.mean(energia[i * v:(i + 1) * v])
+            media[i]=RMS(energia[i * v:(i + 1) * v])
+            eje_tiempo[i] = np.ceil(v/2).astype('int') + (i*v)
+            
+        # Calculate noise level of the last 10% of the signal
+
+        # rms_dB = 10 * np.log10(np.sum(energia[round(0.9 * N):]) / (0.1 * N) / max(energia))
+        rms_dB = dB(RMS(energia[round(0.9 * N):]))
+        mediadB = 10 * np.log10(media / max(energia))
+
+        # Se busca la regresión lineal del intervalo de 0dB y la media mas proxima al ruido + 10dB.
+        # Calculate linear regression between the 0 dB 
+
+        try:
+            r = int(max(np.argwhere(mediadB > rms_dB + 10)))
+                
+            if np.any(mediadB[0:r] < rms_dB+10):
+                r = min(min(np.where(mediadB[0:r] < rms_dB + 10)))
+            if np.all(r==0) or r<10:
+                r=10
+        except:
+            r = 10
+
+        # Least squares
+            
+        A = np.vstack([eje_tiempo[0:r], np.ones(len(eje_tiempo[0:r]))]).T
+        m, c = np.linalg.lstsq(A, mediadB[0:r], rcond=-1)[0]
+        crosspoint = int((rms_dB-c)/m)
+
+
+        linear_fit = lambda x: (m * x) + c
+
+        x = np.arange(len(mediadB))
+        
+        # plt.plot(eje_tiempo, mediadB)
+        # plt.plot(eje_tiempo, linear_fit(x))
+        # plt.show()
+
+
+        # Insufficient SNR
+
+        if rms_dB > -20:
+            
+            crosspoint = len(energia)
+            C = None
+            
+        else:
+
+            error = 1
+            INTMAX = 5
+            veces = 1
+                    
+            while error > 0.0004 and veces <= INTMAX:
+                
+                # Calculates new time intervals for the mean with approximately
+                # p steps for each 10 dB
+                
+                p = 10
+                
+                # Number of samples for the decay slope of 10 dB
+                
+                delta = int(abs(10/m)) 
+                
+                # Interval over which the mean is calculated
+                
+                v = np.floor(delta/p).astype('int') 
+                t = int(np.floor(len(energia[:int(crosspoint-delta)])/v))
+                
+                if t < 2:
+                    t = 2
+                elif np.all(t == 0):
+                    t = 2
+
+                media = np.zeros(t)
+                eje_tiempo = np.zeros(t)
+                
+                for i in range(0, t):
+                    media[i] = RMS(energia[i*v:(i + 1) * v])
+                    # media[i] = np.mean(energia[i*v:(i + 1) * v])
+                    eje_tiempo[i] = np.ceil(v / 2) + (i * v).astype('int')
+                    
+                mediadB = 10 * np.log10(media / max(energia))
+                A = np.vstack([eje_tiempo, np.ones(len(eje_tiempo))]).T
+                m, c = np.linalg.lstsq(A, mediadB, rcond=-1)[0]
+
+                # Nueva media de energia de ruido, comenzando desde desde el crosspoint de la linea de 
+                # decaimiento, 10 dB por debajo del crosspoint de crosspoint
+                
+                # New noise average level, starting from the point of the 
+                # decay curve, 10 dB below the intersection.
+                
+                noise = energia[int(abs(crosspoint + delta)):]
+                
+                if len(noise) < round(0.1 * len(energia)):
+                    noise = energia[round(0.9 * len(energia)):]
+                    
+                # rms_dB = 10 * np.log10(sum(noise)/ len(noise) / max(energia))
+                rms_dB = dB(RMS(noise))
+
+                # New intersection index
+                
+                error = abs(crosspoint - (rms_dB - c) / m) / crosspoint
+                crosspoint = int(round((rms_dB - c) / m))
+                
+                x = np.arange(len(mediadB))
+
+                # plt.plot(eje_tiempo, mediadB)
+                # plt.plot(eje_tiempo, linear_fit(x))
+                # plt.show()
+                veces += 1
+                        
+        # Output validation
+                
+        if crosspoint > N:
+            crosspoint = N
+                    
+        C = max(energia) * 10 ** (c / 10) * np.exp(m/10/np.log10(np.exp(1))*crosspoint) / (
+            -m / 10 / np.log10(np.exp(1)))
+        
+        return crosspoint, C
+
+    def get_smooth_by_schroeder(self, IR, crosspoint):
         """ Smooths the ir's energy with Schroeder's method.
 
         Args:
@@ -251,31 +310,30 @@ class RIRP:
         """
         
         # Get ir energy
-        energy = IR_matrix**2
+        energy = IR**2
 
         ## Iterar schroeder en cada fila de la matriz
         
         schroeder = np.pad(np.flip(np.cumsum(np.flip(energy[0:crosspoint:]))), (0, (len(energy) - crosspoint)))
         
         with np.errstate(divide='ignore', invalid='ignore'):
-            smoothed_energy = 10 * np.log10(schroeder / max(schroeder))
+            smoothed_energy = 10 * np.log10(schroeder / np.max(schroeder))
             
         return smoothed_energy
 
-    def get_smooth_by_median_filter(self, IR_matrix, len_window):
+    def get_smooth_by_median_filter(self, IR, len_window):
         """ Smooths the IR's energy with Median Filter
 
         Args:
-            IR_matrix (numpy.array): Array of the IR
+            IR (numpy.array): Array of the IR
             len_window (int): Length of the window in samples
 
         Returns:
             smoothed_energy (numpy.array): Array of the smoothed energy 
         """
         ## Elevar al cuadrado IR_matix
-        smoothed_energy = np.zeros_like(IR_matrix)
-        for freq in range(np.shape(IR_matrix)[0]):
-            smoothed_energy[freq,:] = median_filter(IR_matrix[freq,:], len_window)
+        
+        smoothed_energy = median_filter(IR, len_window)
     
         return smoothed_energy
 
@@ -295,23 +353,26 @@ class RIRP:
             IACC_Early: Interaural Cross-Correlation Coefficient for Early integration
         """
         
-        Tt = self.get_Tt_EDTt(smoothed_energy)[0]
+        acoustical_parameters = {}
         
-        EDTt = self.get_Tt_EDTt(smoothed_energy)[1]
+        acoustical_parameters['Tt'] = self.get_Tt_EDTt(smoothed_energy)[0]
+        
+        acoustical_parameters['EDTt'] = self.get_Tt_EDTt(smoothed_energy)[1]
 
-        EDT = self.get_EDT(smoothed_energy)
+        acoustical_parameters['EDT'] = self.get_EDT(smoothed_energy)
 
-        T20 = self.get_T20(smoothed_energy)
+        acoustical_parameters['T20'] = self.get_T20(smoothed_energy)
         
-        T30 = self.get_T30(smoothed_energy)
+        acoustical_parameters['T30'] = self.get_T30(smoothed_energy)
         
-        C50 = self.get_C50(smoothed_energy)
+        acoustical_parameters['C50'] = self.get_C50(smoothed_energy)
         
-        C80 = self.get_C80(smoothed_energy)
+        acoustical_parameters['C80'] = self.get_C80(smoothed_energy)
         
         # IACC_Early = self.get_IACC_Early(IR_L, IR_R) CHEQUEAR, NO SE SI PARA EL IACC SE ENRA CON R Y L SEPARADAS O KE
-
-        return Tt, EDTt, EDT, T20, T30, C50, C80
+        
+        
+        return acoustical_parameters
     
     def get_Tt_EDTt(self, smoothed_energy):
         """ Calculates the Transition Time (Tt) of the IR
@@ -324,16 +385,16 @@ class RIRP:
         """
         # No estoy segura si es necesario elevar al 2 la smoothed_energy o no.
         Tt = np.max(np.where(np.cumsum(smoothed_energy**2) <= 0.99 * np.max(np.sum(smoothed_energy**2)))) / self.fs
-
-        smoothed_energy_dB = 10 * np.log10(abs(smoothed_energy / max(smoothed_energy)))
-        x_min_EDTt = np.max(np.argwhere(smoothed_energy_dB > -1))
-        x_max_EDTt = Tt
-        EDTt = (60/(-1 - smoothed_energy_dB[int(x_max_EDTt)]))*(x_max_EDTt - x_min_EDTt) / self.fs
+        # with np.errstate(divide='ignore', invalid='ignore'):
+        #     smoothed_energy_dB = 10 * np.log10(np.abs(smoothed_energy / np.max(smoothed_energy)))
+        x_min_EDTt = np.max(np.argwhere(smoothed_energy > -1))
+        x_max_EDTt = Tt.copy()
+        EDTt = (60/(-1 - smoothed_energy[int(x_max_EDTt)]))*(x_max_EDTt - x_min_EDTt) / self.fs
         
         # m_EDTt, b_EDTt = np.polyfit((x_min_EDTt, x_max_EDTt), (smoothed_energy_dB[x_min_EDTt], smoothed_energy_dB[x_max_EDTt]), 1)
         # EDTt_linear_fit = lambda x: (m_EDTt * x) + b_EDTt
         
-        return Tt, EDTt       
+        return np.round(Tt,4), np.round(EDTt,4)
         
     def get_EDT(self, smoothed_energy):
         """ Calculates the Energy Decay Time (EDT) of the IR
@@ -344,14 +405,15 @@ class RIRP:
         Returns:
             EDT (float): Energy Decay Time in seconds
         """
-        smoothed_energy_dB = 10 * np.log10(abs(smoothed_energy / max(smoothed_energy)))
-        x_min_EDT = np.max(np.argwhere(smoothed_energy_dB > -1))
-        x_max_EDT = np.max(np.argwhere(smoothed_energy_dB > -10))
+        # with np.errstate(divide='ignore', invalid='ignore'):
+        #     smoothed_energy_dB = 10 * np.log10(abs(smoothed_energy / max(smoothed_energy)))
+        x_min_EDT = np.max(np.argwhere(smoothed_energy > -1))
+        x_max_EDT = np.max(np.argwhere(smoothed_energy > -10))
         EDT = (60/9) * (x_max_EDT - x_min_EDT) / self.fs
 
         # m_EDT, b_EDT = np.polyfit((x_min_EDT, x_max_EDT), (smoothed_energy_dB[x_min_EDT], smoothed_energy_dB[x_max_EDT]), 1)
         # EDT_linear_fit = lambda x: (m_EDT * x) + b_EDT
-        return EDT
+        return np.round(EDT,4)
 
     def get_T20(self, smoothed_energy):
         """ Estimates the Reverberation Time (RT) using the -5 to -25 dB 
@@ -363,15 +425,16 @@ class RIRP:
         Returns:
             T20 (float): T20 in seconds
         """
-        smoothed_energy_dB = 10 * np.log10(abs(smoothed_energy / max(smoothed_energy)))
-        x_min_T20 = np.max(np.argwhere(smoothed_energy_dB > -5))
-        x_max_T20 = np.max(np.argwhere(smoothed_energy_dB > -25))
+        # with np.errstate(divide='ignore', invalid='ignore'):
+        #     smoothed_energy_dB = 10 * np.log10(abs(smoothed_energy / max(smoothed_energy)))
+        x_min_T20 = np.max(np.argwhere(smoothed_energy > -5))
+        x_max_T20 = np.max(np.argwhere(smoothed_energy > -25))
         T20 = 3 * (x_max_T20 - x_min_T20) / self.fs
         
         # m_T20, b_T20 = np.polyfit((x_min_T20, x_max_T20), (smoothed_energy_dB[x_min_T20], smoothed_energy_dB[x_max_T20]), 1)
         # T20_linear_fit = lambda x: (m_T20 * x) + b_T20
 
-        return T20
+        return np.round(T20,4)
 
     def get_T30(self, smoothed_energy):
         """ Estimates the Reverberation Time (RT) using the -5 to -35 dB 
@@ -383,25 +446,32 @@ class RIRP:
         Returns:
             T30 (float): T30 in seconds
         """
-        smoothed_energy_dB = 10 * np.log10(abs(smoothed_energy / max(smoothed_energy)))
-        x_min_T30 = np.max(np.argwhere(smoothed_energy_dB > -5))
-        x_max_T30 = np.max(np.argwhere(smoothed_energy_dB > -35))
+        # with np.errstate(divide='ignore', invalid='ignore'):
+        #     smoothed_energy_dB = 10 * np.log10(abs(smoothed_energy / max(smoothed_energy)))
+        x_min_T30 = np.max(np.argwhere(smoothed_energy > -5))
+        x_max_T30 = np.max(np.argwhere(smoothed_energy > -35))
         T30 = 2 * (x_max_T30 - x_min_T30) / self.fs
         
         # m_T30, b_T30 = np.polyfit((x_min_T30, x_max_T30), (smoothed_energy_dB[x_min_TR], smoothed_energy_dB[x_max_T30]), 1)
         # T30_linear_fit = lambda x: (m_T30 * x) + b_T30
         
-        return T30
+        return np.round(T30,4)
     
     def get_C50(self, smoothed_energy):
-        C50 = 10 * np.log10(np.sum(smoothed_energy[0: int(0.05 * fs)]) / np.sum(smoothed_energy[int(0.05 * fs):len(smoothed_energy)]))
-        
-        return C50
+        t50 = np.int64(0.05*self.fs)
+        y50_num = smoothed_energy[:t50]
+        y50_den = smoothed_energy[t50:]
+        with np.errstate(divide='ignore', invalid='ignore'):
+            C50 = 10*np.log10((np.sum(y50_num))/(np.sum(y50_den)))
+        return np.round(C50,4)
     
     def get_C80(self, smoothed_energy):
-        C80 = 10 * np.log10(np.sum(smoothed_energy[0: int(0.08 * fs)]) / np.sum(smoothed_energy[int(0.08 * fs):len(smoothed_energy)]))
-        
-        return C80
+        t80 = np.int64(0.08*self.fs)
+        y80_num = smoothed_energy[:t80]
+        y80_den = smoothed_energy[t80:]
+        with np.errstate(divide='ignore', invalid='ignore'):
+            C80 = 10*np.log10((np.sum(y80_num))/(np.sum(y80_den)))
+        return np.round(C80,4)
     
     def get_IACC_Early(self, IR_L, IR_R):        
         # Hice la función entrando con las señales L y R separadas, pero no se si va a ser así, o si hay que entrar
@@ -418,23 +488,21 @@ class RIRP:
 
 if __name__ == '__main__':
     RIRP_instance = RIRP()
-    signal_path = 'audio_tests/rirs/RI_1.wav'
-    # signal_path = 'D:/Desktop/UNTREF/Instrumentos y Mediciónes Acústicas/TP 10 - RiRs/Código/RIRs_prueba/RI_1.wav'
-    # f_min = 125
-    # f_max = 16000
-    # T = 3
-    # sinesweep, fs = RIRP_instance.load_signal(signal_path)
-    # IR = RIRP_instance.get_IR_from_sinesweep(sine_sweep = sinesweep, fs = fs ,f_min = f_min , f_max = f_max , T = T)
-    IR, fs = RIRP_instance.load_signal(signal_path)
-    IR_reversed = RIRP_instance.get_reversed_IR(IR)
-    filtered_IR, center_freqs =  RIRP_instance.get_IR_filtered(IR = IR_reversed, fs = fs, bands_per_oct = 1)
-    filtered_IR = RIRP_instance.get_reversed_IR(filtered_IR)**2
-    # smoothed_IR = RIRP_instance.get_smooth_by_median_filter(filtered_IR,1000)
-    crosspoint = RIRP_instance.get_lundeby_limit()
-    smoothed_IR = RIRP_instance.get_smooth_by_schroeder(filtered_IR, crosspoint)
-    parameters = RIRP_instance.get_acoustical_parameters(smoothed_IR)
-    print('hola')
     
+    A = RIRP_instance.get_reversed_IR(np.array([[1,2,3],[4,5,6]]))
+    print(A)
+    # signal_path = 'audio_tests/rirs/RI_1.wav'
+    # IR, fs = RIRP_instance.load_signal(signal_path)
+    # IR_reversed = RIRP_instance.get_reversed_IR(IR)
+    # filtered_IR, center_freqs =  RIRP_instance.get_ir_filtered(IR = IR_reversed, bands_per_oct = 1)
+    # filtered_IR = RIRP_instance.get_reversed_IR(filtered_IR)**2
+    # # smoothed_IR = RIRP_instance.get_smooth_by_median_filter(filtered_IR,1000)
+    # for ir_i in filtered_IR:
+    #     crosspoint = RIRP_instance.get_lundeby_limit(ir_i)
+    #     smoothed_IR = RIRP_instance.get_smooth_by_schroeder(ir_i, crosspoint)
+    #     parameters = RIRP_instance.get_acoustical_parameters(smoothed_IR)
+    #     print(parameters)
+        
     # # CASO DE IR BINAURAL (????)
     # signal_path = 'audio_tests/rirs/RI_1.wav'
     # IR, fs = RIRP_instance.load_signal(signal_path)
