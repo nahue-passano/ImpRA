@@ -11,6 +11,7 @@
 import numpy as np
 import os
 import shutil
+import matplotlib.pyplot as plt
 from PyQt5 import QtCore, QtGui, QtWidgets
 from RIRP import RIRP
 
@@ -25,8 +26,6 @@ class Ui_MainWindow(object):
         self.tableWidget = QtWidgets.QTableWidget(self.centralwidget)
         self.tableWidget.setGeometry(QtCore.QRect(20, 620, 1071, 191))
         self.tableWidget.setObjectName("tableWidget")
-        self.tableWidget.setColumnCount(0)
-        self.tableWidget.setRowCount(0)
         self.widget = QtWidgets.QWidget(self.centralwidget)
         self.widget.setGeometry(QtCore.QRect(380, 30, 711, 581))
         self.widget.setObjectName("widget")
@@ -36,15 +35,15 @@ class Ui_MainWindow(object):
         self.gb_graph_settings = QtWidgets.QGroupBox(self.widget)
         self.gb_graph_settings.setGeometry(QtCore.QRect(20, 10, 661, 61))
         self.gb_graph_settings.setObjectName("gb_graph_settings")
-        self.comboBox_3 = QtWidgets.QComboBox(self.gb_graph_settings)
-        self.comboBox_3.setGeometry(QtCore.QRect(260, 30, 101, 21))
-        self.comboBox_3.setObjectName("comboBox_3")
+        self.combo_graph_band = QtWidgets.QComboBox(self.gb_graph_settings)
+        self.combo_graph_band.setGeometry(QtCore.QRect(260, 30, 101, 21))
+        self.combo_graph_band.setObjectName("combo_graph_band")
         self.label_band = QtWidgets.QLabel(self.gb_graph_settings)
         self.label_band.setGeometry(QtCore.QRect(220, 30, 68, 19))
         self.label_band.setObjectName("label_band")
-        self.comboBox_4 = QtWidgets.QComboBox(self.gb_graph_settings)
-        self.comboBox_4.setGeometry(QtCore.QRect(90, 30, 101, 21))
-        self.comboBox_4.setObjectName("comboBox_4")
+        self.combo_graph_parameter = QtWidgets.QComboBox(self.gb_graph_settings)
+        self.combo_graph_parameter.setGeometry(QtCore.QRect(90, 30, 101, 21))
+        self.combo_graph_parameter.setObjectName("combo_graph_parameter")
         self.label_parameter = QtWidgets.QLabel(self.gb_graph_settings)
         self.label_parameter.setGeometry(QtCore.QRect(10, 30, 81, 19))
         self.label_parameter.setObjectName("label_parameter")
@@ -209,13 +208,13 @@ class Ui_MainWindow(object):
             caption = 'Select a signal to process',
             directory = os.getcwd()
         )
-        signal_path = dialog_response[0]
-        file_name = signal_path.split('/')[-1]
-        audio_test_path = os.path.join(os.getcwd(),'audio_tests')
-        new_signal_path = os.path.join(audio_test_path,file_name)
-        shutil.copyfile(signal_path, new_signal_path)
-        
-        self.signal_path = new_signal_path
+        self.signal_path = dialog_response[0]
+        ### Copy file into folder audio_tests/
+        # file_name = signal_path.split('/')[-1]
+        # audio_test_path = os.path.join(os.getcwd(),'audio_tests')
+        # new_signal_path = os.path.join(audio_test_path,file_name)
+        # shutil.copyfile(signal_path, new_signal_path)
+        # self.signal_path = new_signal_path
         
     
     def refresh_frequencies(self):
@@ -236,9 +235,26 @@ class Ui_MainWindow(object):
         self.comboBox.setCurrentText('63 Hz')
         self.comboBox_2.setCurrentText('8 kHz')
     
-    def calculate_parameters(self):
-        signal_path = 'audio_tests/rirs/RI_1.wav'
+    def configure_table(self,parameters_labels, bands_labels):
         
+        self.tableWidget.setRowCount(len(parameters_labels))
+        self.tableWidget.setColumnCount(len(bands_labels))
+        self.tableWidget.setHorizontalHeaderLabels(bands_labels)
+        self.tableWidget.setVerticalHeaderLabels(parameters_labels)
+        self.tableWidget.horizontalHeader().setStretchLastSection(True)
+        self.tableWidget.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
+        
+    
+    def write_table(self, data_i, band_i):
+            
+        for i, item in enumerate(data_i.values()):
+            item_i = QtWidgets.QTableWidgetItem(str(item))
+            self.tableWidget.setItem(i,band_i,item_i)
+        
+    
+    def calculate_parameters(self):
+        # data
+        # self.write_table(data)
         ### Frequency boundaries
         minimum_band_text = self.comboBox.currentText()
         maximum_band_text = self.comboBox_2.currentText()
@@ -252,7 +268,7 @@ class Ui_MainWindow(object):
             maximum_band_value *= 1000
         
         ### Signal type
-        IR, fs = self.backend.load_signal(signal_path)
+        IR, fs = self.backend.load_signal(self.signal_path)
         if self.rb_sine_sweep.isChecked():
             IR, fs = self.backend.get_ir_from_sinesweep(minimum_band_value*(1/np.sqrt(2)),
                                                        maximum_band_value*np.sqrt(2))
@@ -270,12 +286,49 @@ class Ui_MainWindow(object):
         filtered_IR, center_freqs = self.backend.get_ir_filtered(IR, bands_per_oct)
         
         if self.cb_reversed_filtering.isChecked():
-            IR = self.backend.get_reversed_IR(filtered_IR)
+            filtered_IR = self.backend.get_reversed_IR(filtered_IR)
         
-    
+        parameters = ['Tt','EDTt','EDT','T20','T30','C50','C80']
+        center_freqs_str = [str(int(np.round(band_i)))+' Hz' for band_i in center_freqs]
+        center_freqs_str = center_freqs_str[
+            np.argwhere(center_freqs==minimum_band_value)[0,0]:np.argwhere(center_freqs==maximum_band_value)[0,0]+1
+            ]
+        self.configure_table(parameters, center_freqs_str)
+        self.combo_graph_band.clear()
+        self.combo_graph_parameter.addItem('Energy')
+        self.combo_graph_parameter.addItems(parameters)
+        self.combo_graph_band.addItems(center_freqs_str)
         
-    
-
+        parameters_list = []
+        
+        for band_i , ir_i in enumerate(filtered_IR):
+            ### Noise compensation
+            if self.rb_lundeby.isChecked():
+                crosspoint, _ = self.backend.get_lundeby_limit(ir_i)
+                
+            
+            elif self.rb_chu.isChecked():
+                crosspoint = self.backend.get_chu_compensation(ir_i)
+            
+            else:
+                crosspoint = 0
+            
+            ### Smoothing settings
+            if self.rb_shroeder.isChecked():
+                smoothed_IR = self.backend.get_smooth_by_schroeder(ir_i, crosspoint)
+            
+            else:
+                smoothed_IR = self.backend.get_smooth_by_median_filter(ir_i, 500)    # a definir
+            
+            parameters = self.backend.get_acoustical_parameters(smoothed_IR)
+            parameters_list.append(parameters)
+            self.write_table(parameters, band_i)
+            
+            
+            
+            
+        
+        
 
 if __name__ == "__main__":
     import sys
