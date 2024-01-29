@@ -149,6 +149,7 @@ class ParametersCalculationWrapper:
     def _calculate_clarity_i(
         energy_envelope, sample_rate, time_threshold, integration_limit
     ):
+        energy_envelope = energy_envelope[np.argmax(energy_envelope) :]
         index_threshold = np.int64(time_threshold * sample_rate)
         numerator = np.sum(energy_envelope[:index_threshold])
         denominator = np.sum(energy_envelope[index_threshold:integration_limit])
@@ -182,6 +183,7 @@ class ParametersCalculationWrapper:
         EDTs = []
 
         for i, impulse_response in enumerate(energy_envelope):
+            impulse_response = impulse_response[np.argmax(impulse_response) :]
             impulse_response_trimmed = impulse_response[int(5e-3 * sample_rate) :]
             transition_time = self._calculate_transition_time(
                 impulse_response_trimmed, sample_rate
@@ -219,10 +221,14 @@ class ParametersCalculationWrapper:
         float
             Transition time.
         """
-        energy_content = np.cumsum(impulse_response**2)
-        total_energy = np.sum(impulse_response**2)
-        index = np.where(energy_content <= 0.99 * total_energy)[0][-1]
-        return index / sample_rate
+        try:
+            energy_content = np.cumsum(impulse_response**2)
+            total_energy = np.sum(impulse_response**2)
+            index = np.where(energy_content <= 0.99 * total_energy)[0][-1]
+            transition_time = index / sample_rate
+        except:
+            transition_time = len(impulse_response)
+        return transition_time
 
     @staticmethod
     def _calculate_EDTt(
