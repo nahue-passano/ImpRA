@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "impra"
+version = "0.1.0"
+description = ""
+authors = ["nahue-passano <passano43632@estudiantes.untref.edu.ar>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.9.7 || >3.9.7,<4.0"
+numpy = "^1.26.3"
+scipy = "^1.12.0"
+pyyaml = "^6.0.1"
+soundfile = "^0.12.1"
+matplotlib = "^3.8.2"
+librosa = "^0.10.1"
+pandas = "^2.2.0"
+gradio = "^4.16.0"
+streamlit = "^1.30.0"
+plotly = "^5.18.0"
+
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.29.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
