@@ -5,13 +5,13 @@
     <span style="font-size: 30px;">ImpRA: Impulse Response Analyzer</span>
 </p>
 
-## Overview
+## 🔍 Overview
 This software enables the characterization of room impulse responses through a fast algorithm for calculating acoustic parameters. It supports the analysis of both mono and stereo signals. Additionally, users can visualize the energy curve and a table displaying the results of the acoustic parameters.
 
 
 ![app](/docs/app.png)
 
-## Features
+## ✨ Features
 
 - Processing of monophonic and binaural signals
 - Analysis by octave and third-octave bands
@@ -20,9 +20,9 @@ This software enables the characterization of room impulse responses through a f
 - Downloading of data on calculated parameters in .csv file
 
 
-## Installing
+## 🔧 Installing
 
-### Prerequesites
+### 📋 Prerequesites
 
 
 > **Python version**:
@@ -32,7 +32,7 @@ This project requires Python version 3.9 or higher. Ensure that your system has 
 Used for dependency management and packaging in this project. Visit the [official Poetry installation guide](https://python-poetry.org/docs/#installation) for instructions tailored to your operating system.
 
 
-### Package installation
+### 📦 Package installation
 1. Download the repository
     ```bash
     git clone https://github.com/nahue-passano/ImpRA.git
@@ -42,17 +42,22 @@ Used for dependency management and packaging in this project. Visit the [officia
 2. Create and initialize [poetry](https://python-poetry.org/) environment
     ```bash
     poetry install
-    poetry shell
     ```
 
-3. Run the streamlit app
+## 🚀 Usage
+1. Initialize the poetry environment
+   ```bash
+    poetry install
+   ```
+   
+2. Run the streamlit app
     ```bash
     streamlit run impra/app/app.py
     ```
+> Note: Please ensure you are located within the ImpRA folder before running the streamlit app.
 
 
-
-## License
+## 📄 License
 
 This project is licensed under the GNU General Public License v2 (GPLv2). This license allows you the freedom to use, modify, and distribute this software, under the terms specified in the GPL v2.
 
