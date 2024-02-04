@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, List
 import numpy as np
 
 
@@ -261,3 +261,50 @@ class ParametersCalculationWrapper:
             regression_matrix, energy_envelope[:index], rcond=-1
         )[0]
         return -60 / slope
+
+
+def calculate_IACC(signal_filtered_stereo: List[np.ndarray], sample_rate: int) -> Dict:
+    left_signals_per_band, right_signals_per_band = signal_filtered_stereo
+    iacc_per_band = []
+    for left_signal_i, right_signal_i in zip(
+        left_signals_per_band, right_signals_per_band
+    ):
+        iacc_per_band.append(
+            _calculate_IACC_for_band(left_signal_i, right_signal_i, sample_rate)
+        )
+
+    return {"IACC": np.array(iacc_per_band)}
+
+
+def _calculate_IACC_for_band(
+    left_signal: np.ndarray, right_signal: np.ndarray, sample_rate: int
+) -> float:
+
+    # Calculate the early reflection period (80 ms)
+    early_reflection_period_samples = np.int64(0.08 * sample_rate)
+
+    # Ensure the signal length is at least early_reflection_period_samples
+    if (
+        len(left_signal) < early_reflection_period_samples
+        or len(right_signal) < early_reflection_period_samples
+    ):
+        raise ValueError(
+            "Signal is too short for IACC calculation within the early reflection period."
+        )
+
+    # Calculate the cross-correlation
+    cross_corelation = np.correlate(
+        left_signal[:early_reflection_period_samples],
+        right_signal[:early_reflection_period_samples],
+        "full",
+    ) / (
+        np.sqrt(
+            np.sum(left_signal[:early_reflection_period_samples] ** 2)
+            * np.sum(right_signal[:early_reflection_period_samples] ** 2)
+        )
+    )
+
+    # Find the maximum absolute value of the cross-correlation
+    iacc_early = np.max(np.abs(cross_corelation))
+
+    return np.round(iacc_early, 2)
