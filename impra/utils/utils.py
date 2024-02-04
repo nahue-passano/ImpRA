@@ -1,27 +1,51 @@
-from typing import Tuple, Dict
+from typing import Tuple, Dict, List
 
 import librosa
 import numpy as np
 import pandas as pd
+import soundfile as sf
 
 
-def load_signal(audio_path: str, sample_rate: int) -> Tuple[np.ndarray, int]:
+def load_signal(audio_path: str, target_sample_rate: int) -> Tuple[np.ndarray, int]:
     """
-    Load an audio signal from a file.
+    Load and resample an audio signal from a file to a specified sample rate.
 
     Parameters
     ----------
     audio_path : str
         The file path to the audio file.
+    target_sample_rate : int
+        The target sample rate to which the audio file will be resampled.
 
     Returns
     -------
     Tuple[np.ndarray, int]
-        A tuple containing the loaded audio signal as a numpy array (`signal_array`)
-        and the sample rate (`sample_rate`).
+        A tuple containing the loaded and resampled audio signal as a numpy array (`signal_array`)
+        and the target sample rate (`target_sample_rate`).
     """
-    signal_array, sample_rate = librosa.load(audio_path, sr=sample_rate)
-    return signal_array, sample_rate
+    # Load the audio file in its original sample rate
+    signal_array, original_sample_rate = sf.read(audio_path)
+
+    # Resample the audio if the original sample rate is different from the target sample rate
+    if original_sample_rate != target_sample_rate:
+        if signal_array.ndim == 1:  # Mono
+            signal_array = librosa.resample(
+                signal_array, orig_sr=original_sample_rate, target_sr=target_sample_rate
+            )
+        else:  # Stereo
+            # Resample each channel separately and stack them back together
+            signal_array = np.vstack(
+                [
+                    librosa.resample(
+                        signal_array[:, ch],
+                        orig_sr=original_sample_rate,
+                        target_sr=target_sample_rate,
+                    )
+                    for ch in range(signal_array.shape[1])
+                ]
+            ).T
+
+    return signal_array, target_sample_rate
 
 
 def flip_signal(signal_array: np.ndarray) -> np.ndarray:
@@ -150,3 +174,7 @@ def format_freqs(band_freqs: float) -> str:
             string_list.append(f"{formatted_kHz_value} kHz")
 
     return string_list
+
+
+def average_stereo_parameters(parameters_df_list: List[pd.DataFrame]) -> pd.DataFrame:
+    return pd.concat(parameters_df_list).groupby(level=0).mean()
