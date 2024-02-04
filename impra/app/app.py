@@ -10,7 +10,12 @@ from impra.process.filtering import Filters
 from impra.process.smoothing import Smoothers
 from impra.engine.core import ImpulseResponseAnalyzer
 
-st.set_page_config(layout="wide")
+st.set_page_config(
+    page_title="ImpRA",
+    page_icon="docs/logo.png",
+    layout="wide",
+    initial_sidebar_state="auto",
+)
 
 filtering_map = {
     "Octave": Filters.OCTAVE_BAND,
@@ -26,15 +31,13 @@ smoothing_map = {
 if not os.path.exists(".tmp"):
     os.makedirs(".tmp")
 
+
 # Initialize columns
 col1, col2 = st.columns([1, 3])
 
 # First column elements
 with col1:
-    st.markdown(
-        "<h3 style='text-align: center;'>ImpRA</h3>",
-        unsafe_allow_html=True,
-    )
+    st.image("docs/logo.png")
     st.divider()
     uploaded_file = st.file_uploader(
         "Load impulse response", type=["wav", "mp3", "ogg"]
@@ -84,7 +87,7 @@ if analyze_button:
         with open(file_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
 
-        fig = plot.plot_impulse_response(file_path)
+        fig = plot.plot_energy_curve(file_path)
         fig_placeholder.plotly_chart(fig, use_container_width=True)
 
         cfg = {
