@@ -39,7 +39,7 @@ Used for dependency management and packaging in this project. Visit the [officia
     cd ImpRA
     ```
 
-2. Create and initialize [poetry](https://python-poetry.org/) environment
+2. Create the [poetry](https://python-poetry.org/) environment
     ```bash
     poetry install
     ```
@@ -47,7 +47,7 @@ Used for dependency management and packaging in this project. Visit the [officia
 ## 🚀 Usage
 1. Initialize the poetry environment
    ```bash
-    poetry install
+    poetry shell
    ```
    
 2. Run the streamlit app
